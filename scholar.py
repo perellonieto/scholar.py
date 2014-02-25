@@ -313,6 +313,11 @@ class ScholarQuerier(object):
     articles found are collected in the articles member, a list of
     Article instances.
     """
+    HEAD_URL = 'http://scholar.google.com/scholar?hl=en'
+    QUERY_URL = '&q=%(query)s'
+    OPTIONS_URL = ''
+    END_URL = '&btnG=Search&as_subj=eng&as_std=1,5&as_vis=0'
+
     SCHOLAR_URL = 'http://scholar.google.com/scholar?hl=en&q=%(query)s+author:%(author)s&btnG=Search&as_subj=eng&as_sdt=1,5&as_ylo=&as_vis=0'
     NOAUTH_URL = 'http://scholar.google.com/scholar?hl=en&q=%(query)s&btnG=Search&as_subj=eng&as_std=1,5&as_ylo=&as_vis=0'
 
@@ -329,22 +334,32 @@ class ScholarQuerier(object):
         def handle_article(self, art):
             self.querier.add_article(art)
 
-    def __init__(self, author='', scholar_url=None, count=0):
+    def __init__(self, author='', year=None, scholar_url=None, count=0):
         self.articles = []
         self.author = author
+        self.year = year
         # Clip to 100, as Google doesn't support more anyway
         self.count = min(count, 100)
 
-        if author == '':
-            self.scholar_url = self.NOAUTH_URL
-        else:
-            self.scholar_url = scholar_url or self.SCHOLAR_URL
+        self.options = self.create_options()
 
-        if self.count != 0:
-            self.scholar_url += '&num=%d' % self.count
+        self.scholar_url = self.HEAD_URL + self.QUERY_URL + self.options + self.END_URL
 
         self.cjar = CookieJar()
         self.opener = build_opener(HTTPCookieProcessor(self.cjar))
+
+    def create_options(self):
+        """
+        This method adds all the specified options into the url
+        """
+        options = ''
+        if self.author != '':
+            options += '&author='+ quote(self.author)
+        if self.year != None:
+            options += '&as_ylo=%d&as_yhi=%d' % (self.year, self.year)
+        if self.count != 0:
+            options += '&num=%d' % self.count
+        return options
 
     def query(self, search):
         """
@@ -352,7 +367,7 @@ class ScholarQuerier(object):
         response.
         """
         self.clear_articles()
-        url = self.scholar_url % {'query': quote(encode(search)), 'author': quote(self.author)}
+        url = self.scholar_url % {'query': quote(encode(search))}
         req = Request(url=url, headers={'User-Agent': self.USER_AGENT})
         hdl = self.opener.open(req)
         html = hdl.read()
@@ -373,8 +388,8 @@ class ScholarQuerier(object):
         self.articles = []
 
 
-def txt(query, author, count):
-    querier = ScholarQuerier(author=author, count=count)
+def txt(query, author, year, count):
+    querier = ScholarQuerier(author=author, year=year, count=count)
     querier.query(query)
     articles = querier.articles
     if count > 0:
@@ -382,8 +397,8 @@ def txt(query, author, count):
     for art in articles:
         print(art.as_txt() + '\n')
 
-def csv(query, author, count, header=False, sep='|'):
-    querier = ScholarQuerier(author=author, count=count)
+def csv(query, author, year, count, header=False, sep='|'):
+    querier = ScholarQuerier(author=author, year=year, count=count)
     querier.query(query)
     articles = querier.articles
     if count > 0:
@@ -397,12 +412,14 @@ def main():
     usage = """scholar.py [options] <query string>
 A command-line interface to Google Scholar.
 
-Example: scholar.py -c 1 --txt --author einstein quantum"""
+Example: scholar.py -c 1 --txt --author=einstein --year=1960 quantum"""
 
     fmt = optparse.IndentedHelpFormatter(max_help_position=50, width=100)
     parser = optparse.OptionParser(usage=usage, formatter=fmt)
     parser.add_option('-a', '--author',
                       help='Author name')
+    parser.add_option('-y', '--year', type='int',
+                      help='Year of publication')
     parser.add_option('--csv', action='store_true',
                       help='Print article data in CSV form (separator is "|")')
     parser.add_option('--csv-header', action='store_true',
@@ -422,11 +439,11 @@ Example: scholar.py -c 1 --txt --author einstein quantum"""
     query = ' '.join(args)
 
     if options.csv:
-        csv(query, author=options.author, count=options.count)
+        csv(query, author=options.author, year=options.year, count=options.count)
     elif options.csv_header:
-        csv(query, author=options.author, count=options.count, header=True)
+        csv(query, author=options.author, year=options.year, count=options.count, header=True)
     else:
-        txt(query, author=options.author, count=options.count)
+        txt(query, author=options.author, year=options.year, count=options.count)
 
     return 0
 
